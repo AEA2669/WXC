@@ -6,7 +6,8 @@
     <meta name="referrer" content="no-referrer">
     <title>KDFW Operational Weather & METAR Dashboard</title>
     
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 
     <style>
         :root {
@@ -29,7 +30,7 @@
             line-height: 1.5;
         }
 
-        .container { max-width: 1000px; margin: 0 auto; }
+        .container { max-width: 1600px; margin: 0 auto; }
 
         .header {
             display: flex;
@@ -104,8 +105,8 @@
         .detail-label { color: var(--text-muted); font-weight: 500; }
         .detail-value { color: var(--text-main); font-weight: 600; }
 
-        /* Weather Story & Sat & WPC Panels */
-        .story-panel, .sat-panel, .wpc-panel {
+        /* Weather Story & Sat & WPC & Radar Panels */
+        .story-panel, .sat-panel, .wpc-panel, .radar-panel {
             background: var(--panel-bg);
             border: 1px solid var(--border-color);
             border-radius: 10px;
@@ -114,12 +115,12 @@
             text-align: center;
         }
         .story-container { display: flex; flex-direction: column; gap: 20px; align-items: center; }
-        .story-image, .sat-image, .wpc-image {
+        .story-image, .sat-image, .wpc-image, .radar-image {
             max-width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--border-color);
             box-shadow: 0 4px 12px rgba(0,0,0,0.4); display: none; margin: 0 auto;
         }
         .wpc-image { background: #fff; } /* Ensures transparent areas show properly in dark mode */
-        .sat-footer, .wpc-footer { margin-top: 15px; font-size: 0.85rem; color: var(--text-muted); display: flex; justify-content: center; gap: 10px; }
+        .sat-footer, .wpc-footer, .radar-footer { margin-top: 15px; font-size: 0.85rem; color: var(--text-muted); display: flex; justify-content: center; gap: 10px; }
 
         /* Chart Panels */
         .chart-grid {
@@ -134,41 +135,41 @@
         }
 
         .chart-wrapper {
-            height: 220px; 
+            height: 320px; 
             position: relative;
             width: 100%;
         }
 
         .chart-wrapper.small {
-            height: 100px;
+            height: 140px;
         }
 
         /* Forecast List Panel */
-        .forecast-list { display: flex; flex-direction: column; gap: 15px; }
+        .forecast-list { display: flex; flex-direction: column; gap: 8px; }
         .weather-card {
-            background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 10px;
-            display: grid; grid-template-columns: 100px 1fr 150px; overflow: hidden; transition: border-color 0.2s;
+            background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 6px;
+            display: grid; grid-template-columns: 60px 1fr 120px; overflow: hidden; transition: border-color 0.2s;
         }
         .weather-card:hover { border-color: var(--accent-blue); }
-        .icon-box { background: rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; padding: 10px; }
-        .weather-icon-small { width: 70px; height: 70px; border-radius: 50%; border: 2px solid var(--border-color); }
-        .info-box { padding: 15px 20px; }
-        .info-box h3 { margin: 0 0 5px 0; font-size: 1.1rem; color: #fff; }
-        .short-forecast { font-weight: 600; color: var(--accent-blue); margin-bottom: 8px; font-size: 0.95rem; }
-        .detailed-text { font-size: 0.9rem; color: var(--text-muted); margin: 0; }
+        .icon-box { background: rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; padding: 5px; }
+        .weather-icon-small { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--border-color); }
+        .info-box { padding: 8px 12px; }
+        .info-box h3 { margin: 0 0 2px 0; font-size: 0.95rem; color: #fff; }
+        .short-forecast { font-weight: 600; color: var(--accent-blue); margin-bottom: 4px; font-size: 0.85rem; }
+        .detailed-text { font-size: 0.8rem; color: var(--text-muted); margin: 0; line-height: 1.3; }
         .stats-box {
-            padding: 15px; background: rgba(255,255,255,0.03); border-left: 1px solid var(--border-color);
+            padding: 8px; background: rgba(255,255,255,0.03); border-left: 1px solid var(--border-color);
             display: flex; flex-direction: column; justify-content: center; text-align: center;
         }
-        .temp { font-size: 1.8rem; font-weight: 800; margin-bottom: 5px; }
+        .temp { font-size: 1.2rem; font-weight: 800; margin-bottom: 2px; }
         .is-daytime { color: var(--accent-orange); }
         .is-nighttime { color: var(--accent-blue); }
-        .wind { font-size: 0.75rem; text-transform: uppercase; font-weight: bold; color: var(--text-muted); }
+        .wind { font-size: 0.7rem; text-transform: uppercase; font-weight: bold; color: var(--text-muted); }
 
         @media (max-width: 700px) {
             .weather-card { grid-template-columns: 1fr; }
             .icon-box { display: none; }
-            .stats-box { border-left: none; border-top: 1px solid var(--border-color); flex-direction: row; justify-content: space-around; align-items: center; }
+            .stats-box { border-left: none; border-top: 1px solid var(--border-color); flex-direction: row; justify-content: space-around; align-items: center; padding: 6px; }
         }
     </style>
 </head>
@@ -257,6 +258,16 @@
         </div>
     </div>
 
+    <h2 class="section-title">KFWS Radar Loop</h2>
+    <div class="radar-panel">
+        <img id="radar-img" class="radar-image" src="" alt="KFWS Radar Loop">
+        <div class="radar-footer">
+            <span id="radar-status" style="color: var(--accent-orange);">Acquiring radar feed...</span>
+            <span>|</span>
+            <span>Auto-updates every 5 mins</span>
+        </div>
+    </div>
+
     <h2 class="section-title">Operations Weather Story</h2>
     <div class="story-panel" id="story-panel">
         <div id="story-status" style="color: var(--accent-orange); font-size: 0.9rem; margin-bottom: 10px;">Establishing secure tunnel to NWS...</div>
@@ -298,6 +309,7 @@
     Chart.defaults.color = '#94a3b8';
     Chart.defaults.borderColor = '#334155';
     Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+    Chart.register(ChartDataLabels);
 
     let tempChart, windChart, moistureChart, eventsChart;
 
@@ -374,18 +386,55 @@
             rainData.push(wx.rain); thunderData.push(wx.thunder);
         }
 
+        const commonOptions = {
+            responsive: true, 
+            maintainAspectRatio: false, 
+            layout: { padding: { top: 20, right: 10, left: 10, bottom: 0 } },
+            interaction: { mode: 'index', intersect: false },
+            plugins: { 
+                datalabels: {
+                    color: '#eceef2',
+                    font: { size: 10, weight: 'bold' },
+                    formatter: (value) => value !== null ? Math.round(value) : '',
+                    display: function(context) {
+                        return context.dataset.data[context.dataIndex] !== null;
+                    }
+                },
+                legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8 } },
+                tooltip: { 
+                    backgroundColor: 'rgba(15, 17, 26, 0.95)', 
+                    titleColor: '#38bdf8', 
+                    bodyFont: { size: 13 }, 
+                    padding: 12, 
+                    cornerRadius: 8, 
+                    borderColor: '#334155', 
+                    borderWidth: 1 
+                }
+            },
+            scales: {
+                x: { 
+                    grid: { color: 'rgba(51, 65, 85, 0.5)' }, 
+                    ticks: { maxRotation: 45, minRotation: 45, color: '#94a3b8' } 
+                },
+                y: { 
+                    grid: { color: 'rgba(51, 65, 85, 0.5)' }, 
+                    ticks: { color: '#94a3b8' } 
+                }
+            }
+        };
+
         const ctxTemp = document.getElementById('tempChart').getContext('2d');
         tempChart = new Chart(ctxTemp, {
             type: 'line',
             data: {
                 labels: labels,
                 datasets: [
-                    { label: 'Temp (°F)', data: temps, borderColor: '#ef4444', backgroundColor: '#ef4444', tension: 0.4 },
-                    { label: 'Heat Index/Apparent (°F)', data: heatIdx, borderColor: '#fb923c', borderDash: [4, 4], tension: 0.4 },
-                    { label: 'Dewpoint (°F)', data: dews, borderColor: '#22c55e', backgroundColor: '#22c55e', tension: 0.4 }
+                    { label: 'Temp (°F)', data: temps, borderColor: '#ef4444', backgroundColor: '#ef4444', tension: 0.4, borderWidth: 3, pointRadius: 2, pointHoverRadius: 6, datalabels: { align: 'top', offset: 4, color: '#ef4444' } },
+                    { label: 'Heat Index/Apparent (°F)', data: heatIdx, borderColor: '#fb923c', borderDash: [5, 5], tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, datalabels: { display: false } },
+                    { label: 'Dewpoint (°F)', data: dews, borderColor: '#22c55e', backgroundColor: '#22c55e', tension: 0.4, borderWidth: 2, pointRadius: 1, pointHoverRadius: 5, fill: true, backgroundColor: 'rgba(34, 197, 94, 0.1)', datalabels: { align: 'bottom', offset: 4, color: '#22c55e' } }
                 ]
             },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } }
+            options: { ...commonOptions, scales: { ...commonOptions.scales, y: { ...commonOptions.scales.y, title: { display: true, text: 'Degrees °F', color: '#94a3b8' }, suggestedMax: Math.max(...temps.filter(t=>t!==null)) + 10, suggestedMin: Math.min(...dews.filter(d=>d!==null)) - 10 } } }
         });
 
         const ctxWind = document.getElementById('windChart').getContext('2d');
@@ -394,11 +443,11 @@
             data: {
                 labels: labels,
                 datasets: [
-                    { label: 'Surface Wind (KT)', data: winds, borderColor: '#c084fc', backgroundColor: 'rgba(192, 132, 252, 0.2)', fill: true, tension: 0.4 },
-                    { label: 'Wind Gusts (KT)', data: gusts, borderColor: '#ec4899', backgroundColor: '#ec4899', pointStyle: 'rect', pointRadius: 4, showLine: false }
+                    { label: 'Surface Wind (KT)', data: winds, borderColor: '#c084fc', backgroundColor: 'rgba(192, 132, 252, 0.2)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 1, pointHoverRadius: 5, datalabels: { align: 'bottom', offset: 4, color: '#c084fc' } },
+                    { label: 'Wind Gusts (KT)', data: gusts, borderColor: '#ec4899', backgroundColor: '#ec4899', pointStyle: 'triangle', pointRadius: 5, pointHoverRadius: 7, showLine: false, datalabels: { align: 'top', offset: 4, color: '#ec4899' } }
                 ]
             },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true, suggestedMax: 20 } } }
+            options: { ...commonOptions, scales: { ...commonOptions.scales, y: { ...commonOptions.scales.y, beginAtZero: true, suggestedMax: 20, title: { display: true, text: 'Knots', color: '#94a3b8' } } } }
         });
 
         const ctxMoisture = document.getElementById('moistureChart').getContext('2d');
@@ -407,12 +456,12 @@
             data: {
                 labels: labels,
                 datasets: [
-                    { label: 'Sky Cover (%)', data: sky, borderColor: '#94a3b8', backgroundColor: 'rgba(148, 163, 184, 0.2)', fill: true, tension: 0.4 },
-                    { label: 'Rel. Humidity (%)', data: rhs, borderColor: '#14b8a6', tension: 0.4 },
-                    { label: 'Precip Potential (%)', data: pops, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)', fill: true, tension: 0.4 }
+                    { label: 'Sky Cover (%)', data: sky, borderColor: '#94a3b8', backgroundColor: 'rgba(148, 163, 184, 0.2)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, datalabels: { display: false } },
+                    { label: 'Rel. Humidity (%)', data: rhs, borderColor: '#14b8a6', tension: 0.4, borderWidth: 2, pointRadius: 1, pointHoverRadius: 5, datalabels: { align: 'top', color: '#14b8a6' } },
+                    { label: 'Precip Potential (%)', data: pops, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 1, pointHoverRadius: 5, datalabels: { align: 'bottom', color: '#3b82f6' } }
                 ]
             },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { min: 0, max: 100 } } }
+            options: { ...commonOptions, scales: { ...commonOptions.scales, y: { ...commonOptions.scales.y, min: 0, max: 100, title: { display: true, text: 'Percentage %', color: '#94a3b8' } } } }
         });
 
         const ctxEvents = document.getElementById('eventsChart').getContext('2d');
@@ -421,11 +470,18 @@
             data: {
                 labels: labels,
                 datasets: [
-                    { label: 'Rain', data: rainData, backgroundColor: 'rgba(59, 130, 246, 0.8)', barPercentage: 1.0, categoryPercentage: 1.0 },
-                    { label: 'Thunder', data: thunderData, backgroundColor: 'rgba(239, 68, 68, 0.8)', barPercentage: 1.0, categoryPercentage: 1.0 }
+                    { label: 'Rain Potential', data: rainData, backgroundColor: 'rgba(59, 130, 246, 0.8)', barPercentage: 1.0, categoryPercentage: 1.0, borderRadius: 2, datalabels: { display: false } },
+                    { label: 'Thunder Potential', data: thunderData, backgroundColor: 'rgba(239, 68, 68, 0.8)', barPercentage: 1.0, categoryPercentage: 1.0, borderRadius: 2, datalabels: { display: false } }
                 ]
             },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { x: { stacked: true }, y: { stacked: true, display: false, max: 2 } } }
+            options: { 
+                ...commonOptions, 
+                interaction: { mode: 'index', intersect: false },
+                scales: { 
+                    x: { stacked: true, grid: { display: false }, ticks: { display: false } }, 
+                    y: { stacked: true, display: false, max: 2 } 
+                } 
+            }
         });
     }
 
@@ -439,8 +495,7 @@
         
         // Target: Day 1 Color Forecast Map
         const urlsToTry = [
-            `https://www.wpc.ncep.noaa.gov/national_forecast/natfcst.gif`,
-            `https://www.wpc.ncep.noaa.gov/national_forecast/day1fcst.gif`
+            `https://www.wpc.ncep.noaa.gov/noaa/noaad1.gif`
         ];
         
         let urlIndex = 0;
@@ -523,62 +578,71 @@
         tryNext();
     }
 
-    async function scrapeWeatherStories() {
+    function loadRadar() {
+        const radarImg = document.getElementById('radar-img');
+        const radarTime = document.getElementById('radar-status');
+        
+        const targetUrl = 'https://radar.weather.gov/ridge/standard/KFWS_loop.gif';
+        let proxyLevel = 0;
+        
+        function tryNext() {
+            let finalUrl = `${targetUrl}?v=${new Date().getTime()}`;
+            
+            if (proxyLevel === 1) finalUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+            else if (proxyLevel === 2) finalUrl = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(targetUrl)}`;
+            
+            const imgTester = new Image();
+            imgTester.onload = function() {
+                radarImg.src = this.src; 
+                radarImg.style.display = 'block';
+                radarTime.textContent = "Live Radar Active"; 
+                radarTime.style.color = "#4ade80";
+            };
+            imgTester.onerror = function() { 
+                proxyLevel++;
+                if (proxyLevel > 2) { 
+                    radarTime.textContent = "Radar Feed offline or blocked."; 
+                    radarTime.style.color = "#f87171"; 
+                    return;
+                }
+                tryNext();
+            };
+            imgTester.src = finalUrl;
+        }
+        
+        tryNext();
+    }
+
+    function scrapeWeatherStories() {
         const container = document.getElementById('story-container');
         const statusEl = document.getElementById('story-status');
-        const encodedUrl = encodeURIComponent('https://www.weather.gov/fwd/');
+        container.innerHTML = '';
         
-        const proxyWaterfall = [
-            `https://corsproxy.io/?${encodedUrl}`,
-            `https://api.codetabs.com/v1/proxy/?quest=${encodedUrl}`,
-            `https://api.allorigins.win/raw?url=${encodedUrl}`
+        const urlsToTry = [
+            'https://www.weather.gov/images/fwd/graphicast/1.png',
+            'https://www.weather.gov/images/fwd/graphicast/2.png'
         ];
+        
+        let loadedCount = 0;
 
-        let rawHtml = null;
-        for (let i = 0; i < proxyWaterfall.length; i++) {
-            try {
-                const response = await fetch(proxyWaterfall[i]);
-                if (response.ok) { rawHtml = await response.text(); break; }
-            } catch (err) {}
-        }
-
-        if (!rawHtml) {
-            statusEl.textContent = "Error: Firewall prevented proxy tunnel. Unable to fetch graphic.";
-            statusEl.style.color = "#f87171";
-            return;
-        }
-
-        try {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(rawHtml, "text/html");
-            const allImages = doc.querySelectorAll('img');
-            const foundUrls = new Set();
-            
-            allImages.forEach(img => {
-                const src = img.getAttribute('src');
-                if (!src) return;
-                const srcLower = src.toLowerCase();
-                if (srcLower.includes('/graphicast/') || srcLower.includes('/wxstory/') || srcLower.includes('graphiccast')) {
-                    let finalUrl = src;
-                    if (src.startsWith('/')) finalUrl = "https://www.weather.gov" + src;
-                    else if (!src.startsWith('http')) finalUrl = "https://www.weather.gov/fwd/" + src;
-                    foundUrls.add(finalUrl);
-                }
-            });
-
-            if (foundUrls.size > 0) {
+        urlsToTry.forEach(url => {
+            const imgEl = document.createElement('img');
+            imgEl.src = `${url}?v=${new Date().getTime()}`; 
+            imgEl.className = 'story-image';
+            imgEl.onload = function() { 
+                this.style.display = 'block'; 
                 statusEl.style.display = 'none';
-                foundUrls.forEach(url => {
-                    const imgEl = document.createElement('img');
-                    imgEl.src = `${url}?v=${new Date().getTime()}`; 
-                    imgEl.className = 'story-image';
-                    imgEl.onload = function() { this.style.display = 'block'; };
-                    container.appendChild(imgEl);
-                });
-            } else {
-                statusEl.textContent = "No operational graphics currently posted.";
+                loadedCount++;
+            };
+            container.appendChild(imgEl);
+        });
+
+        setTimeout(() => {
+            if (loadedCount === 0) {
+                statusEl.textContent = "No operational graphics currently posted or feed blocked.";
+                statusEl.style.color = "#f87171";
             }
-        } catch (error) {}
+        }, 10000); // 10 second timeout for checking if images loaded
     }
 
     // ----- MAIN DASHBOARD INITIALIZATION -----
@@ -590,11 +654,13 @@
             scrapeWeatherStories();
             loadWPCChart();
             loadSatellite();
+            loadRadar();
             
             // Refresh feeds every 5 minutes
             setInterval(() => {
                 loadWPCChart();
                 loadSatellite();
+                loadRadar();
             }, 300000); 
 
             // Fetch Point routing and live METAR concurrently
@@ -695,4 +761,3 @@
 
 </body>
 </html>
-
