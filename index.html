@@ -105,6 +105,34 @@
         .detail-label { color: var(--text-muted); font-weight: 500; }
         .detail-value { color: var(--text-main); font-weight: 600; }
 
+        /* Raw Data Panels */
+        .raw-data-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .raw-data-panel {
+            background: #111827; /* Darker background for code */
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.95rem;
+            color: #10b981; /* Terminal green */
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            line-height: 1.2;
+        }
+        .raw-data-title {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+
         /* Weather Story & Sat & WPC & Radar Panels */
         .story-panel, .sat-panel, .wpc-panel, .radar-panel {
             background: var(--panel-bg);
@@ -219,6 +247,17 @@
                 <span class="detail-label" style="font-size: 0.8rem;">Last update</span>
                 <span class="detail-value" id="cur-update" style="font-size: 0.8rem; color: var(--accent-orange);">--</span>
             </div>
+        </div>
+    </div>
+
+    <div class="raw-data-container">
+        <div class="raw-data-panel">
+            <div class="raw-data-title">Latest METAR</div>
+            <div id="raw-metar">Loading METAR...</div>
+        </div>
+        <div class="raw-data-panel">
+            <div class="raw-data-title">Latest TAF</div>
+            <div id="raw-taf">Loading TAF...</div>
         </div>
     </div>
 
@@ -663,18 +702,40 @@
                 loadRadar();
             }, 300000); 
 
-            // Fetch Point routing and live METAR concurrently
-            const [pointRes, obsRes] = await Promise.all([
+            // Fetch Point routing, live METAR, and raw data concurrently
+            const metarUrl = `https://aviationweather.gov/api/data/metar?ids=${STATION_ID}&format=raw`;
+            const tafUrl = `https://aviationweather.gov/api/data/taf?ids=${STATION_ID}&format=raw`;
+            const [pointRes, obsRes, rawMetarRes, tafRes] = await Promise.all([
                 fetch(`https://api.weather.gov/points/${LAT},${LON}`),
-                fetch(`https://api.weather.gov/stations/${STATION_ID}/observations/latest`)
+                fetch(`https://api.weather.gov/stations/${STATION_ID}/observations/latest`),
+                fetch(`https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(metarUrl)}`)
+                    .catch(() => fetch(metarUrl))
+                    .catch(() => new Response("METAR data unavailable.", { status: 500 })),
+                fetch(`https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(tafUrl)}`)
+                    .catch(() => fetch(tafUrl)) // Fallback to direct fetch if proxy fails
+                    .catch(() => new Response("TAF data unavailable.", { status: 500 }))
             ]);
 
             if (!pointRes.ok || !obsRes.ok) throw new Error("API Route Error");
             
             const pointData = await pointRes.json();
             const obsData = await obsRes.json();
+            
+            let metarText = obsData.properties.rawMessage || "METAR data not available.";
+            if (rawMetarRes.ok) {
+                const fetchedMetar = await rawMetarRes.text();
+                if (fetchedMetar.trim()) metarText = fetchedMetar.trim();
+            }
+
+            let tafText = "TAF data not available.";
+            if (tafRes.ok) {
+                tafText = await tafRes.text();
+            }
 
             renderCurrentConditions(obsData.properties);
+            
+            document.getElementById('raw-metar').textContent = metarText || "METAR data not available.";
+            document.getElementById('raw-taf').textContent = tafText.trim() || "TAF data not available.";
 
             // Fetch Extended Forecast and RAW GRID DATA concurrently
             const [forecastRes, gridRes] = await Promise.all([
