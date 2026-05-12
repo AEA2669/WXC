@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>KDFW Operational Weather & METAR Dashboard</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #0f111a;
+            --panel-bg: #1a1d29;
+            --card-bg: #242938;
+            --text-main: #eceef2;
+            --text-muted: #94a3b8;
+            --accent-blue: #38bdf8;
+            --accent-orange: #fb923c;
+            --border-color: #334155;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            line-height: 1.5;
+        }
+
+        .container { max-width: 1000px; margin: 0 auto; }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.4rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--accent-blue);
+        }
+
+        #status {
+            font-size: 0.85rem;
+            padding: 4px 10px;
+            border-radius: 4px;
+            background: #000;
+        }
+
+        .location-meta { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px; }
+
+        .section-title {
+            font-size: 1.2rem;
+            color: var(--text-main);
+            margin-bottom: 15px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 5px;
+            margin-top: 40px;
+        }
+
+        /* Current Conditions Panel */
+        .current-panel {
+            background: var(--card-bg);
+            border: 1px solid var(--accent-blue);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            align-items: center;
+        }
+
+        .current-main { display: flex; align-items: center; gap: 20px; flex: 1; min-width: 250px; }
+        .current-icon { width: 90px; height: 90px; border-radius: 10px; border: 1px solid var(--border-color); }
+        .current-temp-block { display: flex; flex-direction: column; }
+        .current-desc { font-size: 1.1rem; font-weight: 600; color: var(--text-main); }
+        .current-temp { font-size: 2.5rem; font-weight: bold; line-height: 1; margin: 5px 0; }
+        .current-temp-c { font-size: 1.1rem; color: var(--text-muted); }
+
+        .current-details {
+            flex: 2;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 10px 20px;
+            font-size: 0.9rem;
+            min-width: 300px;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            padding-bottom: 4px;
+        }
+        .detail-label { color: var(--text-muted); font-weight: 500; }
+        .detail-value { color: var(--text-main); font-weight: 600; }
+
+        /* Weather Story & Sat & WPC Panels */
+        .story-panel, .sat-panel, .wpc-panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .story-container { display: flex; flex-direction: column; gap: 20px; align-items: center; }
+        .story-image, .sat-image, .wpc-image {
+            max-width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--border-color);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4); display: none; margin: 0 auto;
+        }
+        .wpc-image { background: #fff; } /* Ensures transparent areas show properly in dark mode */
+        .sat-footer, .wpc-footer { margin-top: 15px; font-size: 0.85rem; color: var(--text-muted); display: flex; justify-content: center; gap: 10px; }
+
+        /* Chart Panels */
+        .chart-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .chart-wrapper {
+            height: 220px; 
+            position: relative;
+            width: 100%;
+        }
+
+        .chart-wrapper.small {
+            height: 100px;
+        }
+
+        /* Forecast List Panel */
+        .forecast-list { display: flex; flex-direction: column; gap: 15px; }
+        .weather-card {
+            background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 10px;
+            display: grid; grid-template-columns: 100px 1fr 150px; overflow: hidden; transition: border-color 0.2s;
+        }
+        .weather-card:hover { border-color: var(--accent-blue); }
+        .icon-box { background: rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; padding: 10px; }
+        .weather-icon-small { width: 70px; height: 70px; border-radius: 50%; border: 2px solid var(--border-color); }
+        .info-box { padding: 15px 20px; }
+        .info-box h3 { margin: 0 0 5px 0; font-size: 1.1rem; color: #fff; }
+        .short-forecast { font-weight: 600; color: var(--accent-blue); margin-bottom: 8px; font-size: 0.95rem; }
+        .detailed-text { font-size: 0.9rem; color: var(--text-muted); margin: 0; }
+        .stats-box {
+            padding: 15px; background: rgba(255,255,255,0.03); border-left: 1px solid var(--border-color);
+            display: flex; flex-direction: column; justify-content: center; text-align: center;
+        }
+        .temp { font-size: 1.8rem; font-weight: 800; margin-bottom: 5px; }
+        .is-daytime { color: var(--accent-orange); }
+        .is-nighttime { color: var(--accent-blue); }
+        .wind { font-size: 0.75rem; text-transform: uppercase; font-weight: bold; color: var(--text-muted); }
+
+        @media (max-width: 700px) {
+            .weather-card { grid-template-columns: 1fr; }
+            .icon-box { display: none; }
+            .stats-box { border-left: none; border-top: 1px solid var(--border-color); flex-direction: row; justify-content: space-around; align-items: center; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>Dallas/Fort Worth International Airport (KDFW)</h1>
+        <div id="status">Syncing Systems...</div>
+    </div>
+    
+    <div class="location-meta" id="location-meta">
+        Lat: 32.90°N &nbsp;|&nbsp; Lon: 97.04°W &nbsp;|&nbsp; Elev: 541 ft.
+    </div>
+
+    <div class="current-panel" id="current-panel">
+        <div class="current-main">
+            <img id="cur-icon" class="current-icon" src="" alt="Current Conditions" style="display: none;">
+            <div class="current-temp-block">
+                <div id="cur-desc" class="current-desc">Loading...</div>
+                <div id="cur-temp-f" class="current-temp">--°F</div>
+                <div id="cur-temp-c" class="current-temp-c">--°C</div>
+            </div>
+        </div>
+        <div class="current-details">
+            <div class="detail-row">
+                <span class="detail-label">Humidity</span>
+                <span class="detail-value" id="cur-humidity">--%</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Wind Speed</span>
+                <span class="detail-value" id="cur-wind">--</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Barometer</span>
+                <span class="detail-value" id="cur-baro">--</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Dewpoint</span>
+                <span class="detail-value" id="cur-dew">--</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Visibility</span>
+                <span class="detail-value" id="cur-vis">--</span>
+            </div>
+            <div class="detail-row" style="grid-column: 1 / -1; margin-top: 5px; border: none;">
+                <span class="detail-label" style="font-size: 0.8rem;">Last update</span>
+                <span class="detail-value" id="cur-update" style="font-size: 0.8rem; color: var(--accent-orange);">--</span>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="section-title">48-Hour Operational Meteogram</h2>
+    <div class="chart-grid">
+        <div class="chart-wrapper">
+            <canvas id="tempChart"></canvas>
+        </div>
+        <div class="chart-wrapper">
+            <canvas id="windChart"></canvas>
+        </div>
+        <div class="chart-wrapper">
+            <canvas id="moistureChart"></canvas>
+        </div>
+        <div class="chart-wrapper small">
+            <canvas id="eventsChart"></canvas>
+        </div>
+    </div>
+
+    <h2 class="section-title">WPC National Surface Forecast</h2>
+    <div class="wpc-panel">
+        <img id="wpc-img" class="wpc-image" src="" alt="WPC National Forecast Chart">
+        <div class="wpc-footer">
+            <span id="wpc-status" style="color: var(--accent-orange);">Acquiring WPC chart...</span>
+            <span>|</span>
+            <span>Auto-updates</span>
+        </div>
+    </div>
+
+    <h2 class="section-title">CONUS Satellite (GOES-East GeoColor)</h2>
+    <div class="sat-panel">
+        <img id="satellite-img" class="sat-image" src="" alt="GOES-East CONUS">
+        <div class="sat-footer">
+            <span id="sat-status" style="color: var(--accent-orange);">Acquiring satellite feed...</span>
+            <span>|</span>
+            <span>Auto-updates every 5 mins</span>
+        </div>
+    </div>
+
+    <h2 class="section-title">Operations Weather Story</h2>
+    <div class="story-panel" id="story-panel">
+        <div id="story-status" style="color: var(--accent-orange); font-size: 0.9rem; margin-bottom: 10px;">Establishing secure tunnel to NWS...</div>
+        <div class="story-container" id="story-container"></div>
+    </div>
+
+    <h2 class="section-title">Extended Operational Forecast</h2>
+    <div class="forecast-list" id="forecast-list"></div>
+</div>
+
+<script>
+    const statusEl = document.getElementById('status');
+    const listEl = document.getElementById('forecast-list');
+
+    const LAT = 32.8998;
+    const LON = -97.0403;
+    const STATION_ID = "KDFW";
+
+    // Aviation Units Conversions
+    const cToF = (c) => (c !== null ? ((c * 9/5) + 32).toFixed(1) : null);
+    const kmhToMph = (kmh) => (kmh !== null ? (kmh * 0.621371).toFixed(0) : null);
+    const kmhToKnots = (kmh) => (kmh !== null ? (kmh * 0.539957).toFixed(1) : null);
+    const paToInHg = (pa) => (pa !== null ? (pa * 0.00029530).toFixed(2) : null);
+    const paToMb = (pa) => (pa !== null ? (pa / 100).toFixed(1) : null);
+    const mToMi = (m) => {
+        if (m === null) return null;
+        let mi = m * 0.000621371;
+        return mi > 10 ? "10.00" : mi.toFixed(2);
+    };
+
+    function getDirectionString(degrees) {
+        if(degrees === null) return "Calm";
+        const dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+        const index = Math.round(((degrees %= 360) < 0 ? degrees + 360 : degrees) / 22.5) % 16;
+        return dirs[index];
+    }
+
+    // Chart.js Theme Defaults
+    Chart.defaults.color = '#94a3b8';
+    Chart.defaults.borderColor = '#334155';
+    Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+
+    let tempChart, windChart, moistureChart, eventsChart;
+
+    // ----- NWS GRID DATA PARSER -----
+    function getGridValue(gridObj, timeMs) {
+        if (!gridObj || !gridObj.values) return null;
+        for (let v of gridObj.values) {
+            if (!v.validTime) continue;
+            const parts = v.validTime.split('/');
+            const start = new Date(parts[0]).getTime();
+            let durationMs = 0;
+            if (parts.length > 1) {
+                const durStr = parts[1];
+                const days = durStr.match(/(\d+)D/);
+                const hours = durStr.match(/(\d+)H/);
+                if (days) durationMs += parseInt(days[1]) * 86400000;
+                if (hours) durationMs += parseInt(hours[1]) * 3600000;
+            }
+            if (timeMs >= start && timeMs < start + durationMs) return v.value;
+        }
+        return null;
+    }
+
+    function getGridWeather(gridObj, timeMs) {
+        if (!gridObj || !gridObj.values) return { rain: 0, thunder: 0 };
+        for (let v of gridObj.values) {
+            if (!v.validTime) continue;
+            const parts = v.validTime.split('/');
+            const start = new Date(parts[0]).getTime();
+            let durationMs = 0;
+            if (parts.length > 1) {
+                const durStr = parts[1];
+                const days = durStr.match(/(\d+)D/);
+                const hours = durStr.match(/(\d+)H/);
+                if (days) durationMs += parseInt(days[1]) * 86400000;
+                if (hours) durationMs += parseInt(hours[1]) * 3600000;
+            }
+            if (timeMs >= start && timeMs < start + durationMs) {
+                let rain = 0, thunder = 0;
+                for (let w of v.value) {
+                    if (w.weather && w.weather.toLowerCase().includes('rain')) rain = 1;
+                    if (w.weather && w.weather.toLowerCase().includes('thunder')) thunder = 1;
+                }
+                return { rain, thunder };
+            }
+        }
+        return { rain: 0, thunder: 0 };
+    }
+
+    function renderCharts(grid) {
+        const labels = [], temps = [], dews = [], heatIdx = [], winds = [], gusts = [];
+        const sky = [], pops = [], rhs = [], rainData = [], thunderData = [];
+
+        const now = new Date();
+        now.setMinutes(0, 0, 0); 
+
+        for(let i = 0; i < 48; i++) {
+            const t = now.getTime() + (i * 3600000);
+            labels.push(new Date(t).toLocaleTimeString([], { hour: 'numeric' }));
+
+            temps.push(cToF(getGridValue(grid.temperature, t)));
+            dews.push(cToF(getGridValue(grid.dewpoint, t)));
+            heatIdx.push(cToF(getGridValue(grid.apparentTemperature, t)));
+
+            winds.push(kmhToKnots(getGridValue(grid.windSpeed, t)));
+            let gustVal = getGridValue(grid.windGust, t);
+            gusts.push(gustVal ? kmhToKnots(gustVal) : null);
+
+            let sc = getGridValue(grid.skyCover, t); sky.push(sc !== null ? sc : 0);
+            let pop = getGridValue(grid.probabilityOfPrecipitation, t); pops.push(pop !== null ? pop : 0);
+            let rh = getGridValue(grid.relativeHumidity, t); rhs.push(rh !== null ? rh : 0);
+
+            let wx = getGridWeather(grid.weather, t);
+            rainData.push(wx.rain); thunderData.push(wx.thunder);
+        }
+
+        const ctxTemp = document.getElementById('tempChart').getContext('2d');
+        tempChart = new Chart(ctxTemp, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Temp (°F)', data: temps, borderColor: '#ef4444', backgroundColor: '#ef4444', tension: 0.4 },
+                    { label: 'Heat Index/Apparent (°F)', data: heatIdx, borderColor: '#fb923c', borderDash: [4, 4], tension: 0.4 },
+                    { label: 'Dewpoint (°F)', data: dews, borderColor: '#22c55e', backgroundColor: '#22c55e', tension: 0.4 }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } }
+        });
+
+        const ctxWind = document.getElementById('windChart').getContext('2d');
+        windChart = new Chart(ctxWind, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Surface Wind (KT)', data: winds, borderColor: '#c084fc', backgroundColor: 'rgba(192, 132, 252, 0.2)', fill: true, tension: 0.4 },
+                    { label: 'Wind Gusts (KT)', data: gusts, borderColor: '#ec4899', backgroundColor: '#ec4899', pointStyle: 'rect', pointRadius: 4, showLine: false }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true, suggestedMax: 20 } } }
+        });
+
+        const ctxMoisture = document.getElementById('moistureChart').getContext('2d');
+        moistureChart = new Chart(ctxMoisture, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Sky Cover (%)', data: sky, borderColor: '#94a3b8', backgroundColor: 'rgba(148, 163, 184, 0.2)', fill: true, tension: 0.4 },
+                    { label: 'Rel. Humidity (%)', data: rhs, borderColor: '#14b8a6', tension: 0.4 },
+                    { label: 'Precip Potential (%)', data: pops, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)', fill: true, tension: 0.4 }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { min: 0, max: 100 } } }
+        });
+
+        const ctxEvents = document.getElementById('eventsChart').getContext('2d');
+        eventsChart = new Chart(ctxEvents, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Rain', data: rainData, backgroundColor: 'rgba(59, 130, 246, 0.8)', barPercentage: 1.0, categoryPercentage: 1.0 },
+                    { label: 'Thunder', data: thunderData, backgroundColor: 'rgba(239, 68, 68, 0.8)', barPercentage: 1.0, categoryPercentage: 1.0 }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { x: { stacked: true }, y: { stacked: true, display: false, max: 2 } } }
+        });
+    }
+
+    // ----- ADVANCED IMAGE PROXY LOADERS -----
+    // This function tries to load images natively first. If blocked by a firewall (CORS/Hotlink),
+    // it automatically retries routing the image request through free proxy tunnels.
+    
+    function loadWPCChart() {
+        const wpcImg = document.getElementById('wpc-img');
+        const wpcStatus = document.getElementById('wpc-status');
+        
+        // Target: Day 1 Color Forecast Map
+        const urlsToTry = [
+            `https://www.wpc.ncep.noaa.gov/national_forecast/natfcst.gif`,
+            `https://www.wpc.ncep.noaa.gov/national_forecast/day1fcst.gif`
+        ];
+        
+        let urlIndex = 0;
+        let proxyLevel = 0; // 0 = Native, 1 = corsproxy.io, 2 = codetabs.com
+        
+        function tryNext() {
+            if(urlIndex >= urlsToTry.length) {
+                wpcStatus.textContent = "WPC Feed offline or blocked by firewall."; 
+                wpcStatus.style.color = "#f87171"; 
+                return;
+            }
+            
+            const targetUrl = urlsToTry[urlIndex];
+            let finalUrl = `${targetUrl}?v=${new Date().getTime()}`; // Cache buster
+            
+            // Inject Proxy if native fails
+            if (proxyLevel === 1) finalUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+            else if (proxyLevel === 2) finalUrl = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(targetUrl)}`;
+            
+            if (proxyLevel > 0) wpcStatus.textContent = `Bypassing firewall... (Tunnel ${proxyLevel})`;
+            
+            const imgTester = new Image();
+            imgTester.onload = function() {
+                wpcImg.src = this.src; 
+                wpcImg.style.display = 'block';
+                wpcStatus.textContent = proxyLevel > 0 ? "Live Color WPC Chart Active (Proxied)" : "Live Color WPC Chart Active"; 
+                wpcStatus.style.color = "#4ade80";
+            };
+            imgTester.onerror = function() { 
+                proxyLevel++;
+                if (proxyLevel > 2) { proxyLevel = 0; urlIndex++; }
+                tryNext();
+            };
+            imgTester.src = finalUrl;
+        }
+        
+        tryNext();
+    }
+
+    function loadSatellite() {
+        const satImg = document.getElementById('satellite-img');
+        const satTime = document.getElementById('sat-status');
+        
+        const urlsToTry = [
+            `https://cdn.star.nesdis.noaa.gov/GOES19/ABI/CONUS/GEOCOLOR/1250x750.jpg`,
+            `https://cdn.star.nesdis.noaa.gov/GOES16/ABI/CONUS/GEOCOLOR/1250x750.jpg`
+        ];
+        
+        let urlIndex = 0;
+        let proxyLevel = 0;
+        
+        function tryNext() {
+            if(urlIndex >= urlsToTry.length) {
+                satTime.textContent = "Satellite Feed offline or blocked."; 
+                satTime.style.color = "#f87171"; 
+                return;
+            }
+            
+            const targetUrl = urlsToTry[urlIndex];
+            let finalUrl = `${targetUrl}?v=${new Date().getTime()}`;
+            
+            if (proxyLevel === 1) finalUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+            else if (proxyLevel === 2) finalUrl = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(targetUrl)}`;
+            
+            const imgTester = new Image();
+            imgTester.onload = function() {
+                satImg.src = this.src; 
+                satImg.style.display = 'block';
+                satTime.textContent = "Live Feed Active"; 
+                satTime.style.color = "#4ade80";
+            };
+            imgTester.onerror = function() { 
+                proxyLevel++;
+                if (proxyLevel > 2) { proxyLevel = 0; urlIndex++; }
+                tryNext();
+            };
+            imgTester.src = finalUrl;
+        }
+        
+        tryNext();
+    }
+
+    async function scrapeWeatherStories() {
+        const container = document.getElementById('story-container');
+        const statusEl = document.getElementById('story-status');
+        const encodedUrl = encodeURIComponent('https://www.weather.gov/fwd/');
+        
+        const proxyWaterfall = [
+            `https://corsproxy.io/?${encodedUrl}`,
+            `https://api.codetabs.com/v1/proxy/?quest=${encodedUrl}`,
+            `https://api.allorigins.win/raw?url=${encodedUrl}`
+        ];
+
+        let rawHtml = null;
+        for (let i = 0; i < proxyWaterfall.length; i++) {
+            try {
+                const response = await fetch(proxyWaterfall[i]);
+                if (response.ok) { rawHtml = await response.text(); break; }
+            } catch (err) {}
+        }
+
+        if (!rawHtml) {
+            statusEl.textContent = "Error: Firewall prevented proxy tunnel. Unable to fetch graphic.";
+            statusEl.style.color = "#f87171";
+            return;
+        }
+
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(rawHtml, "text/html");
+            const allImages = doc.querySelectorAll('img');
+            const foundUrls = new Set();
+            
+            allImages.forEach(img => {
+                const src = img.getAttribute('src');
+                if (!src) return;
+                const srcLower = src.toLowerCase();
+                if (srcLower.includes('/graphicast/') || srcLower.includes('/wxstory/') || srcLower.includes('graphiccast')) {
+                    let finalUrl = src;
+                    if (src.startsWith('/')) finalUrl = "https://www.weather.gov" + src;
+                    else if (!src.startsWith('http')) finalUrl = "https://www.weather.gov/fwd/" + src;
+                    foundUrls.add(finalUrl);
+                }
+            });
+
+            if (foundUrls.size > 0) {
+                statusEl.style.display = 'none';
+                foundUrls.forEach(url => {
+                    const imgEl = document.createElement('img');
+                    imgEl.src = `${url}?v=${new Date().getTime()}`; 
+                    imgEl.className = 'story-image';
+                    imgEl.onload = function() { this.style.display = 'block'; };
+                    container.appendChild(imgEl);
+                });
+            } else {
+                statusEl.textContent = "No operational graphics currently posted.";
+            }
+        } catch (error) {}
+    }
+
+    // ----- MAIN DASHBOARD INITIALIZATION -----
+    async function loadDashboard() {
+        try {
+            statusEl.textContent = "Establishing API Links...";
+            statusEl.style.color = "#fb923c";
+
+            scrapeWeatherStories();
+            loadWPCChart();
+            loadSatellite();
+            
+            // Refresh feeds every 5 minutes
+            setInterval(() => {
+                loadWPCChart();
+                loadSatellite();
+            }, 300000); 
+
+            // Fetch Point routing and live METAR concurrently
+            const [pointRes, obsRes] = await Promise.all([
+                fetch(`https://api.weather.gov/points/${LAT},${LON}`),
+                fetch(`https://api.weather.gov/stations/${STATION_ID}/observations/latest`)
+            ]);
+
+            if (!pointRes.ok || !obsRes.ok) throw new Error("API Route Error");
+            
+            const pointData = await pointRes.json();
+            const obsData = await obsRes.json();
+
+            renderCurrentConditions(obsData.properties);
+
+            // Fetch Extended Forecast and RAW GRID DATA concurrently
+            const [forecastRes, gridRes] = await Promise.all([
+                fetch(pointData.properties.forecast),
+                fetch(pointData.properties.forecastGridData)
+            ]);
+            
+            const forecastData = await forecastRes.json();
+            const rawGridData = await gridRes.json();
+            
+            renderCharts(rawGridData.properties);
+            renderForecast(forecastData.properties.periods);
+
+            statusEl.textContent = "System Live";
+            statusEl.style.color = "#4ade80";
+
+        } catch (e) {
+            statusEl.textContent = "Offline / Error";
+            statusEl.style.color = "#f87171";
+            console.error(e);
+        }
+    }
+
+    function renderCurrentConditions(obs) {
+        document.getElementById('cur-temp-f').textContent = `${cToF(obs.temperature.value)}°F`;
+        document.getElementById('cur-temp-c').textContent = `${obs.temperature.value ? obs.temperature.value.toFixed(0) : '--'}°C`;
+
+        document.getElementById('cur-desc').textContent = obs.textDescription || "N/A";
+        const iconEl = document.getElementById('cur-icon');
+        if(obs.icon) {
+            iconEl.src = obs.icon.split('?')[0] + "?size=medium";
+            iconEl.style.display = "block";
+        }
+
+        const hum = obs.relativeHumidity.value;
+        document.getElementById('cur-humidity').textContent = hum !== null ? `${hum.toFixed(0)}%` : "N/A";
+
+        const windKmh = obs.windSpeed.value;
+        const windDeg = obs.windDirection.value;
+        if (windKmh !== null && windKmh > 0) {
+            document.getElementById('cur-wind').textContent = `${getDirectionString(windDeg)} ${kmhToKnots(windKmh)} KT`;
+        } else {
+            document.getElementById('cur-wind').textContent = "Calm";
+        }
+
+        document.getElementById('cur-baro').textContent = `${paToInHg(obs.barometricPressure.value)} in (${paToMb(obs.barometricPressure.value)} mb)`;
+        document.getElementById('cur-dew').textContent = `${cToF(obs.dewpoint.value)}°F`;
+        document.getElementById('cur-vis').textContent = `${mToMi(obs.visibility.value)} mi`;
+
+        const updateTime = new Date(obs.timestamp);
+        document.getElementById('cur-update').textContent = updateTime.toLocaleString('en-US', {
+            day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZoneName: 'short'
+        });
+    }
+
+    function renderForecast(periods) {
+        listEl.innerHTML = "";
+        periods.forEach(p => {
+            const card = document.createElement('div');
+            card.className = 'weather-card';
+            
+            const tempColorClass = p.isDaytime ? 'is-daytime' : 'is-nighttime';
+            
+            card.innerHTML = `
+                <div class="icon-box">
+                    <img class="weather-icon-small" src="${p.icon}" alt="Icon">
+                </div>
+                <div class="info-box">
+                    <h3>${p.name}</h3>
+                    <div class="short-forecast">${p.shortForecast}</div>
+                    <p class="detailed-text">${p.detailedForecast}</p>
+                </div>
+                <div class="stats-box">
+                    <div class="temp ${tempColorClass}">${p.temperature}°${p.temperatureUnit}</div>
+                    <div class="wind">${p.windSpeed} ${p.windDirection}</div>
+                </div>
+            `;
+            listEl.appendChild(card);
+        });
+    }
+
+    loadDashboard();
+</script>
+
+</body>
+</html>
+
