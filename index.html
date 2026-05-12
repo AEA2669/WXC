@@ -8,6 +8,8 @@
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <style>
         :root {
@@ -19,6 +21,50 @@
             --accent-blue: #38bdf8;
             --accent-orange: #fb923c;
             --border-color: #334155;
+            --raw-bg: #111827;
+        }
+
+        [data-theme="light"] {
+            --bg-color: #f3f4f6;
+            --panel-bg: #ffffff;
+            --card-bg: #f9fafb;
+            --text-main: #111827;
+            --text-muted: #4b5563;
+            --accent-blue: #0284c7;
+            --accent-orange: #ea580c;
+            --border-color: #e5e7eb;
+            --raw-bg: #f8fafc;
+        }
+
+        .controls-bar {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            background: var(--panel-bg);
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn:hover {
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
+        #radar-map {
+            height: 450px;
+            width: 100%;
+            border-radius: 8px;
+            z-index: 1;
         }
 
         body {
@@ -113,7 +159,7 @@
             margin-bottom: 20px;
         }
         .raw-data-panel {
-            background: #111827; /* Darker background for code */
+            background: var(--raw-bg); /* Darker background for code */
             border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 10px 12px;
@@ -199,6 +245,17 @@
             .icon-box { display: none; }
             .stats-box { border-left: none; border-top: 1px solid var(--border-color); flex-direction: row; justify-content: space-around; align-items: center; padding: 6px; }
         }
+
+        @media print {
+            body { background-color: #fff; color: #000; padding: 0; }
+            .container { max-width: 100%; margin: 0; }
+            h1, .section-title, .detail-label, .detail-value, .current-desc, .current-temp, .raw-data-panel, .raw-data-title, .info-box h3, .short-forecast, .detailed-text, .temp, .wind { color: #000 !important; }
+            .current-panel, .raw-data-panel, .story-panel, .sat-panel, .wpc-panel, .radar-panel, .chart-grid, .weather-card { background: #fff !important; border: 1px solid #ccc !important; box-shadow: none !important; break-inside: avoid; margin-bottom: 15px; }
+            .raw-data-panel { background: #f3f4f6 !important; }
+            #status { display: none; }
+            .section-title { border-bottom: 2px solid #000; padding-bottom: 2px; margin-top: 20px; }
+            .chart-wrapper { break-inside: avoid; }
+        }
     </style>
 </head>
 <body>
@@ -209,6 +266,13 @@
         <div id="status">Syncing Systems...</div>
     </div>
     
+    <div class="controls-bar" id="controls-bar">
+        <button class="btn" id="theme-toggle">☀️ Light Mode</button>
+        <button class="btn" onclick="exportData('csv')">💾 Export CSV</button>
+        <button class="btn" onclick="exportData('html')">🌐 Export HTML</button>
+        <button class="btn" onclick="window.print()">🖨️ Print / PDF</button>
+    </div>
+
     <div class="location-meta" id="location-meta">
         Lat: 32.90°N &nbsp;|&nbsp; Lon: 97.04°W &nbsp;|&nbsp; Elev: 541 ft.
     </div>
@@ -261,6 +325,13 @@
         </div>
     </div>
 
+    <h2 class="section-title">Major Hub METARs</h2>
+    <div class="raw-data-container">
+        <div class="raw-data-panel" style="color: var(--accent-blue);">
+            <div id="hub-metars">Loading Hub METARs...</div>
+        </div>
+    </div>
+
     <h2 class="section-title">48-Hour Operational Meteogram</h2>
     <div class="chart-grid">
         <div class="chart-wrapper">
@@ -297,11 +368,11 @@
         </div>
     </div>
 
-    <h2 class="section-title">KFWS Radar Loop</h2>
-    <div class="radar-panel">
-        <img id="radar-img" class="radar-image" src="" alt="KFWS Radar Loop">
-        <div class="radar-footer">
-            <span id="radar-status" style="color: var(--accent-orange);">Acquiring radar feed...</span>
+    <h2 class="section-title">KFWS Interactive Radar (Slippy Map)</h2>
+    <div class="radar-panel" style="padding: 10px;">
+        <div id="radar-map"></div>
+        <div class="radar-footer" style="margin-top: 5px;">
+            <span id="radar-status" style="color: var(--accent-orange);">Interactive Radar Loaded</span>
             <span>|</span>
             <span>Auto-updates every 5 mins</span>
         </div>
@@ -320,6 +391,41 @@
 <script>
     const statusEl = document.getElementById('status');
     const listEl = document.getElementById('forecast-list');
+
+    let globalGridData = null; // Store for export
+    let tempChart, windChart, moistureChart, eventsChart; // Declare before use
+
+    // Theme Management
+    const themeToggle = document.getElementById('theme-toggle');
+    let currentTheme = localStorage.getItem('theme') || 'dark';
+
+    function applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
+        themeToggle.textContent = theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode';
+        
+        Chart.defaults.color = theme === 'dark' ? '#94a3b8' : '#4b5563';
+        Chart.defaults.borderColor = theme === 'dark' ? '#334155' : '#e5e7eb';
+        
+        if (tempChart) {
+            [tempChart, windChart, moistureChart, eventsChart].forEach(chart => {
+                if(chart && chart.options.scales.x) chart.options.scales.x.ticks.color = Chart.defaults.color;
+                if(chart && chart.options.scales.y) chart.options.scales.y.ticks.color = Chart.defaults.color;
+                if(chart && chart.options.scales.x) chart.options.scales.x.grid.color = Chart.defaults.borderColor;
+                if(chart && chart.options.scales.y) chart.options.scales.y.grid.color = Chart.defaults.borderColor;
+                if(chart) chart.update();
+            });
+        }
+    }
+    
+    applyTheme(currentTheme);
+
+    if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+            currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            applyTheme(currentTheme);
+        });
+    }
 
     const LAT = 32.8998;
     const LON = -97.0403;
@@ -349,8 +455,6 @@
     Chart.defaults.borderColor = '#334155';
     Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
     Chart.register(ChartDataLabels);
-
-    let tempChart, windChart, moistureChart, eventsChart;
 
     // ----- NWS GRID DATA PARSER -----
     function getGridValue(gridObj, timeMs) {
@@ -617,39 +721,79 @@
         tryNext();
     }
 
-    function loadRadar() {
-        const radarImg = document.getElementById('radar-img');
-        const radarTime = document.getElementById('radar-status');
-        
-        const targetUrl = 'https://radar.weather.gov/ridge/standard/KFWS_loop.gif';
-        let proxyLevel = 0;
-        
-        function tryNext() {
-            let finalUrl = `${targetUrl}?v=${new Date().getTime()}`;
-            
-            if (proxyLevel === 1) finalUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-            else if (proxyLevel === 2) finalUrl = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(targetUrl)}`;
-            
-            const imgTester = new Image();
-            imgTester.onload = function() {
-                radarImg.src = this.src; 
-                radarImg.style.display = 'block';
-                radarTime.textContent = "Live Radar Active"; 
-                radarTime.style.color = "#4ade80";
-            };
-            imgTester.onerror = function() { 
-                proxyLevel++;
-                if (proxyLevel > 2) { 
-                    radarTime.textContent = "Radar Feed offline or blocked."; 
-                    radarTime.style.color = "#f87171"; 
-                    return;
-                }
-                tryNext();
-            };
-            imgTester.src = finalUrl;
+    function initRadarMap() {
+        const map = L.map('radar-map').setView([LAT, LON], 8);
+
+        // Base Map
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
+        }).addTo(map);
+
+        // Add Iowa State IEM Nexrad Layer
+        const nexrad = L.tileLayer('https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png', {
+            opacity: 0.6,
+            transparent: true,
+            attribution: 'Weather data &copy; <a href="https://mesonet.agron.iastate.edu/">IEM Nexrad</a>'
+        });
+        nexrad.addTo(map);
+
+        // Add Marker for KDFW
+        L.marker([LAT, LON]).addTo(map).bindPopup('KDFW Airport');
+
+        // Refresh radar layer every 5 mins
+        setInterval(() => {
+            nexrad.setUrl('https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png?' + new Date().getTime());
+        }, 300000);
+    }
+
+    function exportData(format) {
+        if (!globalGridData) {
+            alert('Data not fully loaded yet. Please wait.');
+            return;
         }
-        
-        tryNext();
+
+        const now = new Date();
+        now.setMinutes(0, 0, 0);
+        let csvContent = "Time,Temp(F),Dewpoint(F),Wind(KT),Gust(KT),Sky(%),Humidity(%),PrecipProb(%)\n";
+        let htmlContent = "<html><head><title>KDFW Forecast Export</title></head><body><table border='1' style='border-collapse: collapse; width: 100%; text-align: center;'><tr><th>Time</th><th>Temp(F)</th><th>Dewpoint(F)</th><th>Wind(KT)</th><th>Gust(KT)</th><th>Sky(%)</th><th>Humidity(%)</th><th>PrecipProb(%)</th></tr>";
+
+        for(let i = 0; i < 48; i++) {
+            const t = now.getTime() + (i * 3600000);
+            const timeStr = new Date(t).toLocaleString();
+            
+            const temp = cToF(getGridValue(globalGridData.temperature, t)) || "";
+            const dew = cToF(getGridValue(globalGridData.dewpoint, t)) || "";
+            const wind = kmhToKnots(getGridValue(globalGridData.windSpeed, t)) || "";
+            const gustVal = getGridValue(globalGridData.windGust, t);
+            const gust = gustVal ? kmhToKnots(gustVal) : "";
+            const sky = getGridValue(globalGridData.skyCover, t) || 0;
+            const pop = getGridValue(globalGridData.probabilityOfPrecipitation, t) || 0;
+            const rh = getGridValue(globalGridData.relativeHumidity, t) || 0;
+
+            csvContent += `"${timeStr}",${temp},${dew},${wind},${gust},${sky},${rh},${pop}\n`;
+            htmlContent += `<tr><td>${timeStr}</td><td>${temp}</td><td>${dew}</td><td>${wind}</td><td>${gust}</td><td>${sky}</td><td>${rh}</td><td>${pop}</td></tr>`;
+        }
+        htmlContent += "</table></body></html>";
+
+        let blob, filename;
+        if (format === 'csv') {
+            blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            filename = 'KDFW_48H_Forecast.csv';
+        } else if (format === 'html') {
+            blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
+            filename = 'KDFW_48H_Forecast.html';
+        }
+
+        const link = document.createElement("a");
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", filename);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
     }
 
     function scrapeWeatherStories() {
@@ -693,14 +837,26 @@
             scrapeWeatherStories();
             loadWPCChart();
             loadSatellite();
-            loadRadar();
+            initRadarMap();
             
             // Refresh feeds every 5 minutes
             setInterval(() => {
                 loadWPCChart();
                 loadSatellite();
-                loadRadar();
             }, 300000); 
+
+            // Fetch Hub METARs non-blocking
+            const hubIds = "KCLT,KORD,KMIA,KJFK,KLGA,KDCA,KLAX,KPHX";
+            const hubMetarUrl = `https://aviationweather.gov/api/data/metar?ids=${hubIds}&format=raw`;
+            fetch(`https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(hubMetarUrl)}`)
+                .catch(() => fetch(hubMetarUrl))
+                .then(res => res.text())
+                .then(text => {
+                    document.getElementById('hub-metars').textContent = text.trim() || "Hub METARs unavailable.";
+                })
+                .catch(err => {
+                    document.getElementById('hub-metars').textContent = "Failed to load Hub METARs.";
+                });
 
             // Fetch Point routing, live METAR, and raw data concurrently
             const metarUrl = `https://aviationweather.gov/api/data/metar?ids=${STATION_ID}&format=raw`;
@@ -746,6 +902,8 @@
             const forecastData = await forecastRes.json();
             const rawGridData = await gridRes.json();
             
+            globalGridData = rawGridData.properties;
+            
             renderCharts(rawGridData.properties);
             renderForecast(forecastData.properties.periods);
 
@@ -775,10 +933,23 @@
 
         const windKmh = obs.windSpeed.value;
         const windDeg = obs.windDirection.value;
+        const windEl = document.getElementById('cur-wind');
         if (windKmh !== null && windKmh > 0) {
-            document.getElementById('cur-wind').textContent = `${getDirectionString(windDeg)} ${kmhToKnots(windKmh)} KT`;
+            const knots = kmhToKnots(windKmh);
+            windEl.textContent = `${getDirectionString(windDeg)} ${knots} KT`;
+            
+            if (parseFloat(knots) >= 25) {
+                windEl.style.color = '#ef4444'; // Red alert
+                windEl.style.fontWeight = '900';
+                windEl.textContent += ' ⚠️ HIGH WIND';
+            } else {
+                windEl.style.color = '';
+                windEl.style.fontWeight = '';
+            }
         } else {
-            document.getElementById('cur-wind').textContent = "Calm";
+            windEl.textContent = "Calm";
+            windEl.style.color = '';
+            windEl.style.fontWeight = '';
         }
 
         document.getElementById('cur-baro').textContent = `${paToInHg(obs.barometricPressure.value)} in (${paToMb(obs.barometricPressure.value)} mb)`;
