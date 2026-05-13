@@ -1126,16 +1126,24 @@
                 let eventsFound = false;
 
                 try {
-                    // Fetch directly from the FAA. A local CORS browser extension is required.
-                    const res = await fetch(ep.url);
-                    if (res.ok) {
-                        const data = await res.json();
+                    let res, dataWrapper;
+                    // Retry loop to handle occasional Akamai packet drops on the proxy
+                    for (let attempt = 0; attempt < 3; attempt++) {
+                        res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(ep.url)}`);
+                        if (res.ok) {
+                            dataWrapper = await res.json();
+                            if (dataWrapper.contents) break;
+                        }
+                        await new Promise(r => setTimeout(r, 1000)); // wait 1s before retry
+                    }
+
+                    if (dataWrapper && dataWrapper.contents) {
+                        const data = JSON.parse(dataWrapper.contents);
                         const items = data.value || data || [];
                         
                         if (items.length > 0) {
                             eventsFound = true;
                             items.forEach(item => {
-                                // Extract meaningful text depending on payload structure
                                 let text = item.freeForm?.simpleText || item.simpleText || item.text || item.airportLongName || item.airportId || 'System Event';
                                 if (item.airportId && text !== item.airportId) {
                                     text = `<b>${item.airportId}</b>: ${text}`;
@@ -1145,7 +1153,7 @@
                         }
                     }
                 } catch (e) {
-                    console.log(`Failed to fetch ${ep.title}`);
+                    console.log(`Failed to fetch ${ep.title}`, e);
                 }
 
                 if (!eventsFound) {
