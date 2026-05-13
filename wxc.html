@@ -425,13 +425,19 @@
     <h2 class="section-title">Local Live Cameras</h2>
     <div class="camera-panel" style="display:flex; gap:20px; overflow-x:auto; margin-bottom:30px; background:var(--panel-bg); padding:20px; border:1px solid var(--border-color); border-radius:10px;">
         <div style="flex:1; min-width:300px; text-align:center;">
-            <img id="cam1" style="width:100%; border-radius:8px; border:1px solid var(--border-color);" src="" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/3/30/DFW_Airport_Terminal_D.jpg'" alt="Camera 1">
+            <img id="cam1" style="width:100%; border-radius:8px; border:1px solid var(--border-color);" src="" onerror="this.onerror=null; this.src='https://upload.wikimedia.org/wikipedia/commons/3/30/DFW_Airport_Terminal_D.jpg'" alt="Camera 1">
             <div style="font-size:0.85rem; margin-top:5px; color:var(--text-muted);">Regional TxDOT Cam 1 (US 75 @ Mockingbird)</div>
         </div>
         <div style="flex:1; min-width:300px; text-align:center;">
-            <img id="cam2" style="width:100%; border-radius:8px; border:1px solid var(--border-color);" src="" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/e/ec/Dallas_Fort_Worth_International_Airport_from_the_air.jpg'" alt="Camera 2">
+            <img id="cam2" style="width:100%; border-radius:8px; border:1px solid var(--border-color);" src="" onerror="this.onerror=null; this.src='https://upload.wikimedia.org/wikipedia/commons/e/ec/Dallas_Fort_Worth_International_Airport_from_the_air.jpg'" alt="Camera 2">
             <div style="font-size:0.85rem; margin-top:5px; color:var(--text-muted);">Regional TxDOT Cam 2 (Spur 366 @ Field)</div>
         </div>
+    </div>
+
+    <h2 class="section-title">FAA National Airspace System (NAS) Status</h2>
+    <div id="nas-status-panel" class="nas-panel" style="margin-bottom: 30px; background: var(--panel-bg); padding: 20px; border: 1px solid var(--border-color); border-radius: 10px;">
+        <div id="nas-loading" style="color: var(--accent-orange); font-size: 0.9rem;">Fetching NAS Status Information...</div>
+        <div id="nas-content" style="display: none; flex-direction: column; gap: 15px;"></div>
     </div>
 
     <h2 class="section-title">Extended Operational Forecast</h2>
@@ -1048,7 +1054,7 @@
 
     function scrapeWeatherStories() {
         const container = document.getElementById('story-container');
-        const statusEl = document.getElementById('story-status');
+        const storyStatusEl = document.getElementById('story-status');
         container.innerHTML = '';
         
         const urlsToTry = [
@@ -1064,7 +1070,7 @@
             imgEl.className = 'story-image';
             imgEl.onload = function() { 
                 this.style.display = 'block'; 
-                statusEl.style.display = 'none';
+                storyStatusEl.style.display = 'none';
                 loadedCount++;
             };
             container.appendChild(imgEl);
@@ -1072,8 +1078,8 @@
 
         setTimeout(() => {
             if (loadedCount === 0) {
-                statusEl.textContent = "No operational graphics currently posted or feed blocked.";
-                statusEl.style.color = "#f87171";
+                storyStatusEl.textContent = "No operational graphics currently posted or feed blocked.";
+                storyStatusEl.style.color = "#f87171";
             }
         }, 10000); // 10 second timeout for checking if images loaded
     }
@@ -1088,6 +1094,79 @@
 
         if(c1) c1.src = `${url1}?v=${new Date().getTime()}`;
         if(c2) c2.src = `${url2}?v=${new Date().getTime()}`;
+    }
+
+    async function fetchNasStatus() {
+        const loadingEl = document.getElementById('nas-loading');
+        const contentEl = document.getElementById('nas-content');
+        if (!loadingEl || !contentEl) return;
+        
+        try {
+            // Endpoints replicating nasstatus.faa.gov
+            const endpoints = [
+                { title: 'Active Airport Events', url: 'https://nasstatus.faa.gov/api/airport-events' },
+                { title: 'Active En Route Events', url: 'https://nasstatus.faa.gov/api/enroute-events' },
+                { title: 'Forecast Events', url: 'https://nasstatus.faa.gov/api/forecast-events' },
+                { title: 'Air Traffic Control System Command Center (ATCSCC) Announcements', url: 'https://nasstatus.faa.gov/api/atcscc-messages' }
+            ];
+
+            contentEl.innerHTML = '';
+            let hasAnyData = false;
+
+            for (const ep of endpoints) {
+                const block = document.createElement('div');
+                block.style.background = 'rgba(255, 255, 255, 0.05)';
+                block.style.padding = '10px 15px';
+                block.style.borderRadius = '6px';
+                block.style.borderLeft = '4px solid var(--accent-orange)';
+                
+                let html = `<h3 style="margin-top: 0; margin-bottom: 8px; color: var(--accent-blue); font-size: 1rem;">${ep.title}</h3>`;
+                html += `<ul style="margin: 0; padding-left: 20px; font-size: 0.9rem; line-height: 1.4;">`;
+
+                let eventsFound = false;
+
+                try {
+                    // Fetch directly from the FAA. A local CORS browser extension is required.
+                    const res = await fetch(ep.url);
+                    if (res.ok) {
+                        const data = await res.json();
+                        const items = data.value || data || [];
+                        
+                        if (items.length > 0) {
+                            eventsFound = true;
+                            items.forEach(item => {
+                                // Extract meaningful text depending on payload structure
+                                let text = item.freeForm?.simpleText || item.simpleText || item.text || item.airportLongName || item.airportId || 'System Event';
+                                if (item.airportId && text !== item.airportId) {
+                                    text = `<b>${item.airportId}</b>: ${text}`;
+                                }
+                                html += `<li style="margin-bottom: 6px;">${text}</li>`;
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.log(`Failed to fetch ${ep.title}`);
+                }
+
+                if (!eventsFound) {
+                    html += `<li style="color: #94a3b8; list-style-type: none; margin-left: -20px;">No active events or feed offline.</li>`;
+                } else {
+                    hasAnyData = true;
+                }
+
+                html += `</ul>`;
+                block.innerHTML = html;
+                contentEl.appendChild(block);
+            }
+            
+            loadingEl.style.display = 'none';
+            contentEl.style.display = 'flex';
+            
+        } catch (e) {
+            loadingEl.textContent = 'Failed to load NAS status.';
+            loadingEl.style.color = '#f87171';
+            console.log('NAS Status Error:', e);
+        }
     }
 
     // ----- MAIN DASHBOARD INITIALIZATION -----
@@ -1112,6 +1191,7 @@
             loadAviationOverviews();
             loadSatellite();
             loadCameras();
+            fetchNasStatus();
             
             if (!isInitialized) {
                 initRadarMap();
@@ -1119,6 +1199,7 @@
                 setInterval(() => {
                     loadAviationOverviews();
                     loadSatellite();
+                    fetchNasStatus();
                 }, 300000); 
                 isInitialized = true;
             }
